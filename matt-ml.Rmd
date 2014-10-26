@@ -1,0 +1,112 @@
+---
+title: "Practical Machine Learning"
+author: "Matthieu Guérin"
+date: "Sunday, October 26, 2014"
+output: html_document
+---
+
+# Introduction
+This project shows how machine learning technics may be used to try to judge how well human subjects are performing a Weight Lifting Exercise by reading data from various "sensors".
+
+It uses the Weight Lifting Exercises Dataset from:
+*Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. *
+
+# Exercice
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+# Preparing data
+
+```{r, echo=FALSE}
+library(caret)
+library(rpart)
+set.seed(22222)
+```
+```{r,cache=TRUE, echo=FALSE}
+setwd("D:/My Documents/Dropbox/GitHub/Machine Learning")
+#setwd("C:/Users/guerin-mat/Dropbox/GitHub/Machine Learning")
+a<-read.csv("pml-training.csv")
+b<-read.csv("pml-testing.csv")
+
+```
+
+The loaded data frame dimensions (rows, columns) are `r dim(a)`.
+
+
+The first 8 columns contain descriptive value and a lot of columns have too few variance to be of any use when evaluating our model against the test set (e.g. max_roll_belt).
+
+The next step cleans out those values, we end up with:
+
+```{r,cache=TRUE, echo=FALSE}
+clean_data = function (y) {
+        yy <- y[,-c(1:8, 12:36, 50:59, 69:83, 87:101, 103:112, 125:139, 141:150)]
+        yy <- sapply(yy, function(x) if(is.integer(x) && !is.factor(x))
+                                         as.numeric(x)
+                                     else
+                                         x
+                     )
+        yy <- data.frame(yy)
+        yy[,52] <- as.factor(yy[,52])
+        
+        return(yy)
+}
+data <- clean_data(a)
+coursera_testing <- clean_data(b)
+names(coursera_testing)[52] <- "classe"
+coursera_testing[52] <- as.factor(1:5)
+levels(training$classe) <- c("A","B","C","D","E")
+levels(coursera_testing$classe) <- c("A","B","C","D","E")
+
+```
+The resulting training data dimensions (rows, columns) are `r dim(training)`.
+
+To be sure, let's check for near zero variance data, 
+```{r, echo=FALSE, cache=TRUE}
+nzv <- nearZeroVar(data, saveMetrics = TRUE)
+
+```
+The number of nzv left is `r sum(nzv$nzv)`.
+
+# Training / testing sets
+Let's split data in two sets:
+```{r,cache=TRUE}
+inTraining <- createDataPartition(data$classe, p = 0.6, list = FALSE)
+training <- data[inTraining, ]
+testing  <- data[-inTraining, ]
+levels(training$classe) <- c("A","B","C","D","E")
+levels(testing$classe) <- c("A","B","C","D","E")
+```
+
+Lets train our model on the training set with an rpart algorithm.
+
+```{r}
+fit1<-train(classe ~ ., data = training, method = "rpart",
+      tuneLength = 50)
+
+```
+
+```{r, echo=FALSE, fig.width = 8, fig.height = 8}
+plot(fit1$finalModel)
+text(fit1$finalModel, cex=0.6)
+```
+
+```{r, echo=FALSE}
+pfit1<-predict(fit1$finalModel, training, type = "class")
+cfit1<-confusionMatrix(pfit1,training$classe)
+print(cfit1)
+```
+
+We see that we have a result of about `r round(cfit1$overall["Accuracy"],2)` accuracy on the **training** data. 
+
+Let's process the testing data:
+
+```{r, echo=FALSE}
+testfit1<-predict(fit1$finalModel, testing, type = "class")
+testcfit1<-confusionMatrix(testfit1,testing$classe)
+print(testcfit1)
+```
+
+We see that we have a result of about `r round(testcfit1$overall["Accuracy"],2)` accuracy on the **testing** data. 
+
+Looks like our model is not overfitted.
+
+
